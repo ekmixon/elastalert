@@ -72,8 +72,7 @@ class BasicMatchString(object):
             # as an es result key, since it would have been matched in the lookup_es_key call above
             for i, text_value in enumerate(alert_text_values):
                 if text_value is None:
-                    alert_value = self.rule.get(alert_text_args[i])
-                    if alert_value:
+                    if alert_value := self.rule.get(alert_text_args[i]):
                         alert_text_values[i] = alert_value
 
             alert_text_values = [missing if val is None else val for val in alert_text_values]
@@ -101,15 +100,13 @@ class BasicMatchString(object):
         for key, counts in list(self.match.items()):
             if key.startswith('top_events_'):
                 self.text += '%s:\n' % (key[11:])
-                top_events = list(counts.items())
-
-                if not top_events:
-                    self.text += 'No events found.\n'
-                else:
+                if top_events := list(counts.items()):
                     top_events.sort(key=lambda x: x[1], reverse=True)
                     for term, count in top_events:
                         self.text += '%s: %s\n' % (term, count)
 
+                else:
+                    self.text += 'No events found.\n'
                 self.text += '\n'
 
     def _add_match_items(self):
@@ -179,27 +176,30 @@ class Alerter(object):
         if type(root) == list:
             # Make a copy since we may be modifying the contents of the structure we're walking
             for i, item in enumerate(copy.copy(root)):
-                if type(item) == dict or type(item) == list:
+                if type(item) in [dict, list]:
                     self.resolve_rule_references(root[i])
                 else:
                     root[i] = self.resolve_rule_reference(item)
         elif type(root) == dict:
             # Make a copy since we may be modifying the contents of the structure we're walking
             for key, value in root.copy().items():
-                if type(value) == dict or type(value) == list:
+                if type(value) in [dict, list]:
                     self.resolve_rule_references(root[key])
                 else:
                     root[key] = self.resolve_rule_reference(value)
 
     def resolve_rule_reference(self, value):
         strValue = str(value)
-        if strValue.startswith('$') and strValue.endswith('$') and strValue[1:-1] in self.rule:
-            if type(value) == int:
-                return int(self.rule[strValue[1:-1]])
-            else:
-                return self.rule[strValue[1:-1]]
-        else:
+        if (
+            not strValue.startswith('$')
+            or not strValue.endswith('$')
+            or strValue[1:-1] not in self.rule
+        ):
             return value
+        if type(value) == int:
+            return int(self.rule[strValue[1:-1]])
+        else:
+            return self.rule[strValue[1:-1]]
 
     def alert(self, match):
         """ Send an alert. Match is a dictionary of information about the alert.
@@ -236,8 +236,7 @@ class Alerter(object):
             # as an es result key, since it would have been matched in the lookup_es_key call above
             for i, subject_value in enumerate(alert_subject_values):
                 if subject_value is None:
-                    alert_value = self.rule.get(alert_subject_args[i])
-                    if alert_value:
+                    if alert_value := self.rule.get(alert_subject_args[i]):
                         alert_subject_values[i] = alert_value
 
             missing = self.rule.get('alert_missing_value', '<MISSING VALUE>')
@@ -278,18 +277,21 @@ class Alerter(object):
             text_table = Texttable(max_width=self.get_aggregation_summary_text__maximum_width())
             text_table.header(summary_table_fields_with_count)
             # Format all fields as 'text' to avoid long numbers being shown as scientific notation
-            text_table.set_cols_dtype(['t' for i in summary_table_fields_with_count])
+            text_table.set_cols_dtype(['t' for _ in summary_table_fields_with_count])
             match_aggregation = {}
 
             # Maintain an aggregate count for each unique key encountered in the aggregation period
             for match in matches:
-                key_tuple = tuple([str(lookup_es_key(match, key)) for key in summary_table_fields])
+                key_tuple = tuple(
+                    str(lookup_es_key(match, key)) for key in summary_table_fields
+                )
+
                 if key_tuple not in match_aggregation:
                     match_aggregation[key_tuple] = 1
                 else:
                     match_aggregation[key_tuple] = match_aggregation[key_tuple] + 1
             for keys, count in match_aggregation.items():
-                text_table.add_row([key for key in keys] + [count])
+                text_table.add_row(list(keys) + [count])
             text += text_table.draw() + '\n\n'
             text += self.rule.get('summary_prefix', '')
         return str(text)
@@ -326,22 +328,22 @@ class StompAlerter(Alerter):
 
         fullmessage = {}
         for match in matches:
-            if qk is not None:
-                resmatch = lookup_es_key(match, qk)
-            else:
-                resmatch = None
-
+            resmatch = lookup_es_key(match, qk) if qk is not None else None
             if resmatch is not None:
                 elastalert_logger.info(
-                    'Alert for %s, %s at %s:' % (self.rule['name'], resmatch, lookup_es_key(match, self.rule['timestamp_field'])))
+                    f"Alert for {self.rule['name']}, {resmatch} at {lookup_es_key(match, self.rule['timestamp_field'])}:"
+                )
+
                 alerts.append(
                     'Alert for %s, %s at %s:' % (self.rule['name'], resmatch, lookup_es_key(
                         match, self.rule['timestamp_field']))
                 )
                 fullmessage['match'] = resmatch
             else:
-                elastalert_logger.info('Rule %s generated an alert at %s:' % (
-                    self.rule['name'], lookup_es_key(match, self.rule['timestamp_field'])))
+                elastalert_logger.info(
+                    f"Rule {self.rule['name']} generated an alert at {lookup_es_key(match, self.rule['timestamp_field'])}:"
+                )
+
                 alerts.append(
                     'Rule %s generated an alert at %s:' % (self.rule['name'], lookup_es_key(
                         match, self.rule['timestamp_field']))
@@ -390,9 +392,14 @@ class DebugAlerter(Alerter):
         for match in matches:
             if qk in match:
                 elastalert_logger.info(
-                    'Alert for %s, %s at %s:' % (self.rule['name'], match[qk], lookup_es_key(match, self.rule['timestamp_field'])))
+                    f"Alert for {self.rule['name']}, {match[qk]} at {lookup_es_key(match, self.rule['timestamp_field'])}:"
+                )
+
             else:
-                elastalert_logger.info('Alert for %s at %s:' % (self.rule['name'], lookup_es_key(match, self.rule['timestamp_field'])))
+                elastalert_logger.info(
+                    f"Alert for {self.rule['name']} at {lookup_es_key(match, self.rule['timestamp_field'])}:"
+                )
+
             elastalert_logger.info(str(BasicMatchString(self.rule, match)))
 
     def get_info(self):
@@ -427,14 +434,14 @@ class EmailAlerter(Alerter):
             self.rule['bcc'] = [self.rule['bcc']]
         add_suffix = self.rule.get('email_add_domain')
         if add_suffix and not add_suffix.startswith('@'):
-            self.rule['email_add_domain'] = '@' + add_suffix
+            self.rule['email_add_domain'] = f'@{add_suffix}'
 
     def alert(self, matches):
         body = self.create_alert_body(matches)
 
         # Add JIRA ticket if it exists
         if self.pipeline is not None and 'jira_ticket' in self.pipeline:
-            url = '%s/browse/%s' % (self.pipeline['jira_server'], self.pipeline['jira_ticket'])
+            url = f"{self.pipeline['jira_server']}/browse/{self.pipeline['jira_ticket']}"
             body += '\nJIRA ticket: %s' % (url)
 
         to_addr = self.rule['email']
@@ -481,22 +488,21 @@ class EmailAlerter(Alerter):
             if 'smtp_auth_file' in self.rule:
                 self.smtp.login(self.user, self.password)
         except (SMTPException, error) as e:
-            raise EAException("Error connecting to SMTP host: %s" % (e))
+            raise EAException(f"Error connecting to SMTP host: {e}")
         except SMTPAuthenticationError as e:
-            raise EAException("SMTP username/password rejected: %s" % (e))
+            raise EAException(f"SMTP username/password rejected: {e}")
         self.smtp.sendmail(self.from_addr, to_addr, email_msg.as_string())
         self.smtp.quit()
 
-        elastalert_logger.info("Sent email to %s" % (to_addr))
+        elastalert_logger.info(f"Sent email to {to_addr}")
 
     def create_default_title(self, matches):
-        subject = 'ElastAlert: %s' % (self.rule['name'])
+        subject = f"ElastAlert: {self.rule['name']}"
 
         # If the rule has a query_key, add that value plus timestamp to subject
         if 'query_key' in self.rule:
-            qk = matches[0].get(self.rule['query_key'])
-            if qk:
-                subject += ' - %s' % (qk)
+            if qk := matches[0].get(self.rule['query_key']):
+                subject += f' - {qk}'
 
         return subject
 
@@ -579,12 +585,13 @@ class JiraAlerter(Alerter):
         self.client = None
 
         if self.bump_in_statuses and self.bump_not_in_statuses:
-            msg = 'Both jira_bump_in_statuses (%s) and jira_bump_not_in_statuses (%s) are set.' % \
-                  (','.join(self.bump_in_statuses), ','.join(self.bump_not_in_statuses))
-            intersection = list(set(self.bump_in_statuses) & set(self.bump_in_statuses))
-            if intersection:
-                msg = '%s Both have common statuses of (%s). As such, no tickets will ever be found.' % (
-                    msg, ','.join(intersection))
+            msg = f"Both jira_bump_in_statuses ({','.join(self.bump_in_statuses)}) and jira_bump_not_in_statuses ({','.join(self.bump_not_in_statuses)}) are set."
+
+            if intersection := list(
+                set(self.bump_in_statuses) & set(self.bump_in_statuses)
+            ):
+                msg = f"{msg} Both have common statuses of ({','.join(intersection)}). As such, no tickets will ever be found."
+
             msg += ' This should be simplified to use only one or the other.'
             logging.warning(msg)
 
@@ -597,7 +604,10 @@ class JiraAlerter(Alerter):
             self.get_arbitrary_fields()
         except JIRAError as e:
             # JIRAError may contain HTML, pass along only first 1024 chars
-            raise EAException("Error connecting to JIRA: %s" % (str(e)[:1024])).with_traceback(sys.exc_info()[2])
+            raise EAException(
+                f"Error connecting to JIRA: {str(e)[:1024]}"
+            ).with_traceback(sys.exc_info()[2])
+
 
         self.set_priority()
 
@@ -606,7 +616,9 @@ class JiraAlerter(Alerter):
             if self.priority is not None and self.client is not None:
                 self.jira_args['priority'] = {'id': self.priority_ids[self.priority]}
         except KeyError:
-            logging.error("Priority %s not found. Valid priorities are %s" % (self.priority, list(self.priority_ids.keys())))
+            logging.error(
+                f"Priority {self.priority} not found. Valid priorities are {list(self.priority_ids.keys())}"
+            )
 
     def reset_jira_args(self):
         self.jira_args = {'project': {'key': self.project},
@@ -623,10 +635,8 @@ class JiraAlerter(Alerter):
             if type(self.labels) != list:
                 self.labels = [self.labels]
             self.jira_args['labels'] = self.labels
-        if self.watchers:
-            # Support single watcher or list
-            if type(self.watchers) != list:
-                self.watchers = [self.watchers]
+        if self.watchers and type(self.watchers) != list:
+            self.watchers = [self.watchers]
         if self.assignee:
             self.jira_args['assignee'] = {'name': self.assignee}
 
@@ -648,7 +658,7 @@ class JiraAlerter(Alerter):
         # Check the schema information to decide how to set the value correctly
         # If the schema information is not available, raise an exception since we don't know how to set it
         # Note this is only the case for two built-in types, id: issuekey and id: thumbnail
-        if not ('schema' in field or 'type' in field['schema']):
+        if 'schema' not in field and 'type' not in field['schema']:
             raise Exception("Could not determine schema information for the jira field '{0}'".format(normalized_jira_field))
         arg_type = field['schema']['type']
 
@@ -663,13 +673,16 @@ class JiraAlerter(Alerter):
             if array_items in ['string', 'date', 'datetime']:
                 # Special case for multi-select custom types (the JIRA metadata says that these are strings, but
                 # in reality, they are required to be provided as an object.
-                if 'custom' in field['schema'] and field['schema']['custom'] in self.custom_string_types_with_special_handling:
-                    self.jira_args[arg_name] = [{'value': v} for v in value]
-                else:
-                    self.jira_args[arg_name] = value
+                self.jira_args[arg_name] = (
+                    [{'value': v} for v in value]
+                    if 'custom' in field['schema']
+                    and field['schema']['custom']
+                    in self.custom_string_types_with_special_handling
+                    else value
+                )
+
             elif array_items == 'number':
                 self.jira_args[arg_name] = [int(v) for v in value]
-            # Also attempt to handle arrays of complex types that have to be passed as objects with an identifier 'key'
             elif array_items == 'option':
                 self.jira_args[arg_name] = [{'value': v} for v in value]
             else:
@@ -677,24 +690,19 @@ class JiraAlerter(Alerter):
                 # This may not work, as the key might actually be 'key', 'id', 'value', or something else
                 # If it works, great!  If not, it will manifest itself as an API error that will bubble up
                 self.jira_args[arg_name] = [{'name': v} for v in value]
-        # Handle non-array types
-        else:
-            # Simple string types
-            if arg_type in ['string', 'date', 'datetime']:
-                # Special case for custom types (the JIRA metadata says that these are strings, but
-                # in reality, they are required to be provided as an object.
-                if 'custom' in field['schema'] and field['schema']['custom'] in self.custom_string_types_with_special_handling:
-                    self.jira_args[arg_name] = {'value': value}
-                else:
-                    self.jira_args[arg_name] = value
-            # Number type
-            elif arg_type == 'number':
-                self.jira_args[arg_name] = int(value)
-            elif arg_type == 'option':
+        elif arg_type in ['string', 'date', 'datetime']:
+            # Special case for custom types (the JIRA metadata says that these are strings, but
+            # in reality, they are required to be provided as an object.
+            if 'custom' in field['schema'] and field['schema']['custom'] in self.custom_string_types_with_special_handling:
                 self.jira_args[arg_name] = {'value': value}
-            # Complex type
             else:
-                self.jira_args[arg_name] = {'name': value}
+                self.jira_args[arg_name] = value
+        elif arg_type == 'number':
+            self.jira_args[arg_name] = int(value)
+        elif arg_type == 'option':
+            self.jira_args[arg_name] = {'value': value}
+        else:
+            self.jira_args[arg_name] = {'name': value}
 
     def get_arbitrary_fields(self):
         # Clear jira_args
@@ -706,7 +714,11 @@ class JiraAlerter(Alerter):
             # 2. A custom field that a JIRA admin has configured
             if jira_field.startswith('jira_') and jira_field not in self.known_field_list and str(value)[:1] != '#':
                 self.set_jira_arg(jira_field, value, self.jira_fields)
-            if jira_field.startswith('jira_') and jira_field not in self.known_field_list and str(value)[:1] == '#':
+            if (
+                jira_field.startswith('jira_')
+                and jira_field not in self.known_field_list
+                and str(value).startswith('#')
+            ):
                 self.deferred_settings.append(jira_field)
 
     def get_priorities(self):
@@ -779,32 +791,31 @@ class JiraAlerter(Alerter):
         title = self.create_title(matches)
 
         if self.bump_tickets:
-            ticket = self.find_existing_ticket(matches)
-            if ticket:
+            if ticket := self.find_existing_ticket(matches):
                 inactivity_datetime = ts_now() - datetime.timedelta(days=self.bump_after_inactivity)
                 if ts_to_dt(ticket.fields.updated) >= inactivity_datetime:
                     if self.pipeline is not None:
                         self.pipeline['jira_ticket'] = None
                         self.pipeline['jira_server'] = self.server
                     return None
-                elastalert_logger.info('Commenting on existing ticket %s' % (ticket.key))
+                elastalert_logger.info(f'Commenting on existing ticket {ticket.key}')
                 for match in matches:
                     try:
                         self.comment_on_ticket(ticket, match)
                     except JIRAError as e:
-                        logging.exception("Error while commenting on ticket %s: %s" % (ticket, e))
+                        logging.exception(f"Error while commenting on ticket {ticket}: {e}")
                     if self.labels:
                         for label in self.labels:
                             try:
                                 ticket.fields.labels.append(label)
                             except JIRAError as e:
-                                logging.exception("Error while appending labels to ticket %s: %s" % (ticket, e))
+                                logging.exception(f"Error while appending labels to ticket {ticket}: {e}")
                 if self.transition:
-                    elastalert_logger.info('Transitioning existing ticket %s' % (ticket.key))
+                    elastalert_logger.info(f'Transitioning existing ticket {ticket.key}')
                     try:
                         self.transition_ticket(ticket)
                     except JIRAError as e:
-                        logging.exception("Error while transitioning ticket %s: %s" % (ticket, e))
+                        logging.exception(f"Error while transitioning ticket {ticket}: {e}")
 
                 if self.pipeline is not None:
                     self.pipeline['jira_ticket'] = ticket
@@ -834,8 +845,11 @@ class JiraAlerter(Alerter):
                             )).with_traceback(sys.exc_info()[2])
 
         except JIRAError as e:
-            raise EAException("Error creating JIRA ticket using jira_args (%s): %s" % (self.jira_args, e))
-        elastalert_logger.info("Opened Jira ticket: %s" % (self.issue))
+            raise EAException(
+                f"Error creating JIRA ticket using jira_args ({self.jira_args}): {e}"
+            )
+
+        elastalert_logger.info(f"Opened Jira ticket: {self.issue}")
 
         if self.pipeline is not None:
             self.pipeline['jira_ticket'] = self.issue
@@ -861,21 +875,19 @@ class JiraAlerter(Alerter):
         # If there is a query_key, use that in the title
 
         if 'query_key' in self.rule and lookup_es_key(matches[0], self.rule['query_key']):
-            title = 'ElastAlert: %s matched %s' % (lookup_es_key(matches[0], self.rule['query_key']), self.rule['name'])
+            title = f"ElastAlert: {lookup_es_key(matches[0], self.rule['query_key'])} matched {self.rule['name']}"
+
         else:
-            title = 'ElastAlert: %s' % (self.rule['name'])
+            title = f"ElastAlert: {self.rule['name']}"
 
         if for_search:
             return title
 
-        timestamp = matches[0].get(self.rule['timestamp_field'])
-        if timestamp:
-            title += ' - %s' % (pretty_ts(timestamp, self.rule.get('use_local_time')))
+        if timestamp := matches[0].get(self.rule['timestamp_field']):
+            title += f" - {pretty_ts(timestamp, self.rule.get('use_local_time'))}"
 
-        # Add count for spikes
-        count = matches[0].get('spike_count')
-        if count:
-            title += ' - %s+ events' % (count)
+        if count := matches[0].get('spike_count'):
+            title += f' - {count}+ events'
 
         return title
 
@@ -898,9 +910,10 @@ class CommandAlerter(Alerter):
                 logging.warning('Warning! You could be vulnerable to shell injection!')
             self.rule['command'] = [self.rule['command']]
 
-        self.new_style_string_format = False
-        if 'new_style_string_format' in self.rule and self.rule['new_style_string_format']:
-            self.new_style_string_format = True
+        self.new_style_string_format = bool(
+            'new_style_string_format' in self.rule
+            and self.rule['new_style_string_format']
+        )
 
     def alert(self, matches):
         # Format the command and arguments
@@ -908,7 +921,7 @@ class CommandAlerter(Alerter):
             command = [resolve_string(command_arg, matches[0]) for command_arg in self.rule['command']]
             self.last_command = command
         except KeyError as e:
-            raise EAException("Error formatting command: %s" % (e))
+            raise EAException(f"Error formatting command: {e}")
 
         # Run command and pipe data
         try:
@@ -921,9 +934,12 @@ class CommandAlerter(Alerter):
                 alert_text = self.create_alert_body(matches)
                 stdout, stderr = subp.communicate(input=alert_text.encode())
             if self.rule.get("fail_on_non_zero_exit", False) and subp.wait():
-                raise EAException("Non-zero exit code while running command %s" % (' '.join(command)))
+                raise EAException(
+                    f"Non-zero exit code while running command {' '.join(command)}"
+                )
+
         except OSError as e:
-            raise EAException("Error while running command %s: %s" % (' '.join(command), e))
+            raise EAException(f"Error while running command {' '.join(command)}: {e}")
 
     def get_info(self):
         return {'type': 'command',
@@ -944,8 +960,7 @@ class SnsAlerter(Alerter):
         self.profile = self.rule.get('aws_profile', None)
 
     def create_default_title(self, matches):
-        subject = 'ElastAlert: %s' % (self.rule['name'])
-        return subject
+        return f"ElastAlert: {self.rule['name']}"
 
     def alert(self, matches):
         body = self.create_alert_body(matches)
@@ -962,7 +977,7 @@ class SnsAlerter(Alerter):
             Message=body,
             Subject=self.create_title(matches)
         )
-        elastalert_logger.info("Sent sns notification to %s" % (self.sns_topic_arn))
+        elastalert_logger.info(f"Sent sns notification to {self.sns_topic_arn}")
 
 
 class HipChatAlerter(Alerter):
@@ -979,8 +994,8 @@ class HipChatAlerter(Alerter):
         self.hipchat_ignore_ssl_errors = self.rule.get('hipchat_ignore_ssl_errors', False)
         self.hipchat_notify = self.rule.get('hipchat_notify', True)
         self.hipchat_from = self.rule.get('hipchat_from', '')
-        self.url = 'https://%s/v2/room/%s/notification?auth_token=%s' % (
-            self.hipchat_domain, self.hipchat_room_id, self.hipchat_auth_token)
+        self.url = f'https://{self.hipchat_domain}/v2/room/{self.hipchat_room_id}/notification?auth_token={self.hipchat_auth_token}'
+
         self.hipchat_proxy = self.rule.get('hipchat_proxy', None)
 
     def create_alert_body(self, matches):
@@ -993,12 +1008,10 @@ class HipChatAlerter(Alerter):
             body = body.replace('\n', br)
 
             truncated_message = '<br/> ...(truncated)'
-            truncate_to = 10000 - len(truncated_message)
         else:
             truncated_message = '..(truncated)'
-            truncate_to = 10000 - len(truncated_message)
-
         if (len(body) > 9999):
+            truncate_to = 10000 - len(truncated_message)
             body = body[:truncate_to] + truncated_message
 
         return body
@@ -1025,9 +1038,7 @@ class HipChatAlerter(Alerter):
             if self.rule.get('hipchat_mentions', []):
                 ping_users = self.rule.get('hipchat_mentions', [])
                 ping_msg = payload.copy()
-                ping_msg['message'] = "ping {}".format(
-                    ", ".join("@{}".format(user) for user in ping_users)
-                )
+                ping_msg['message'] = f'ping {", ".join(f"@{user}" for user in ping_users)}'
                 ping_msg['message_format'] = "text"
 
                 response = requests.post(
@@ -1043,8 +1054,8 @@ class HipChatAlerter(Alerter):
             warnings.resetwarnings()
             response.raise_for_status()
         except RequestException as e:
-            raise EAException("Error posting to HipChat: %s" % e)
-        elastalert_logger.info("Alert sent to HipChat room %s" % self.hipchat_room_id)
+            raise EAException(f"Error posting to HipChat: {e}")
+        elastalert_logger.info(f"Alert sent to HipChat room {self.hipchat_room_id}")
 
     def get_info(self):
         return {'type': 'hipchat',
@@ -1068,7 +1079,10 @@ class MsTeamsAlerter(Alerter):
     def format_body(self, body):
         if self.ms_teams_alert_fixed_width:
             body = body.replace('`', "'")
-            body = "```{0}```".format('```\n\n```'.join(x for x in body.split('\n'))).replace('\n``````', '')
+            body = "```{0}```".format('```\n\n```'.join(body.split('\n'))).replace(
+                '\n``````', ''
+            )
+
         return body
 
     def alert(self, matches):
@@ -1094,7 +1108,7 @@ class MsTeamsAlerter(Alerter):
                 response = requests.post(url, data=json.dumps(payload, cls=DateTimeEncoder), headers=headers, proxies=proxies)
                 response.raise_for_status()
             except RequestException as e:
-                raise EAException("Error posting to ms teams: %s" % e)
+                raise EAException(f"Error posting to ms teams: {e}")
         elastalert_logger.info("Alert sent to MS Teams")
 
     def get_info(self):
@@ -1193,8 +1207,9 @@ class SlackAlerter(Alerter):
             payload['attachments'][0]['title_link'] = self.slack_title_link
 
         if self.slack_attach_kibana_discover_url:
-            kibana_discover_url = lookup_es_key(matches[0], 'kibana_discover_url')
-            if kibana_discover_url:
+            if kibana_discover_url := lookup_es_key(
+                matches[0], 'kibana_discover_url'
+            ):
                 payload['attachments'].append({
                     'color': self.slack_kibana_discover_color,
                     'title': self.slack_kibana_discover_title,
@@ -1204,10 +1219,7 @@ class SlackAlerter(Alerter):
         for url in self.slack_webhook_url:
             for channel_override in self.slack_channel_override:
                 try:
-                    if self.slack_ca_certs:
-                        verify = self.slack_ca_certs
-                    else:
-                        verify = self.slack_ignore_ssl_errors
+                    verify = self.slack_ca_certs or self.slack_ignore_ssl_errors
                     if self.slack_ignore_ssl_errors:
                         requests.packages.urllib3.disable_warnings()
                     payload['channel'] = channel_override
@@ -1219,7 +1231,7 @@ class SlackAlerter(Alerter):
                     warnings.resetwarnings()
                     response.raise_for_status()
                 except RequestException as e:
-                    raise EAException("Error posting to slack: %s" % e)
+                    raise EAException(f"Error posting to slack: {e}")
         elastalert_logger.info("Alert '%s' sent to Slack" % self.rule['name'])
 
     def get_info(self):
@@ -1327,7 +1339,7 @@ class MattermostAlerter(Alerter):
                 warnings.resetwarnings()
                 response.raise_for_status()
             except RequestException as e:
-                raise EAException("Error posting to Mattermost: %s" % e)
+                raise EAException(f"Error posting to Mattermost: {e}")
         elastalert_logger.info("Alert sent to Mattermost")
 
     def get_info(self):

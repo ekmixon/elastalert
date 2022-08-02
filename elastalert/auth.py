@@ -48,7 +48,7 @@ class Auth(object):
         :param profile_name: AWS profile to use for connecting. Only required when signing requests.
         """
         if username and password:
-            return username + ':' + password
+            return f'{username}:{password}'
 
         if not aws_region and not os.environ.get('AWS_DEFAULT_REGION'):
             return None

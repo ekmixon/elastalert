@@ -27,7 +27,10 @@ def get_module(module_name):
         base_module = __import__(module_path, globals(), locals(), [module_class])
         module = getattr(base_module, module_class)
     except (ImportError, AttributeError, ValueError) as e:
-        raise EAException("Could not import module %s: %s" % (module_name, e)).with_traceback(sys.exc_info()[2])
+        raise EAException(
+            f"Could not import module {module_name}: {e}"
+        ).with_traceback(sys.exc_info()[2])
+
     return module
 
 
@@ -109,13 +112,12 @@ def _find_es_dict_by_key(lookup_dict, term):
 
         if index is not None and subkey:
             dict_cursor = dict_cursor[subkey]
-            if type(dict_cursor) == list and len(dict_cursor) > index:
-                subkey = index
-                if term:
-                    dict_cursor = dict_cursor[subkey]
-            else:
+            if type(dict_cursor) != list or len(dict_cursor) <= index:
                 return {}, None
 
+            subkey = index
+            if term:
+                dict_cursor = dict_cursor[subkey]
     return dict_cursor, subkey
 
 
@@ -152,13 +154,13 @@ def ts_to_dt(timestamp):
 
 def dt_to_ts(dt):
     if not isinstance(dt, datetime.datetime):
-        logging.warning('Expected datetime, got %s' % (type(dt)))
+        logging.warning(f'Expected datetime, got {type(dt)}')
         return dt
     ts = dt.isoformat()
     # Round microseconds to milliseconds
     if dt.tzinfo is None:
         # Implicitly convert local times to UTC
-        return ts + 'Z'
+        return f'{ts}Z'
     # isoformat() uses microsecond accuracy and timezone offsets
     # but we should try to use millisecond accuracy and Z to indicate UTC
     return ts.replace('000+00:00', 'Z').replace('+00:00', 'Z')
@@ -176,10 +178,9 @@ def ts_to_dt_with_format(timestamp, ts_format):
 
 def dt_to_ts_with_format(dt, ts_format):
     if not isinstance(dt, datetime.datetime):
-        logging.warning('Expected datetime, got %s' % (type(dt)))
+        logging.warning(f'Expected datetime, got {type(dt)}')
         return dt
-    ts = dt.strftime(ts_format)
-    return ts
+    return dt.strftime(ts_format)
 
 
 def ts_now():
@@ -214,9 +215,7 @@ def hashable(obj):
     """ Convert obj to a hashable obj.
     We use the value of some fields from Elasticsearch as keys for dictionaries. This means
     that whatever Elasticsearch returns must be hashable, and it sometimes returns a list or dict."""
-    if not obj.__hash__:
-        return str(obj)
-    return obj
+    return obj if obj.__hash__ else str(obj)
 
 
 def format_index(index, start, end, add_extra=False):
@@ -230,8 +229,8 @@ def format_index(index, start, end, add_extra=False):
     while start.date() <= end.date():
         indices.add(start.strftime(index))
         start += datetime.timedelta(days=1)
-    num = len(indices)
     if add_extra:
+        num = len(indices)
         while len(indices) == num:
             original_start -= datetime.timedelta(days=1)
             new_index = original_start.strftime(index)
@@ -293,10 +292,7 @@ def cronite_datetime_to_timestamp(self, d):
 
 
 def add_raw_postfix(field, is_five_or_above):
-    if is_five_or_above:
-        end = '.keyword'
-    else:
-        end = '.raw'
+    end = '.keyword' if is_five_or_above else '.raw'
     if not field.endswith(end):
         field += end
     return field
@@ -332,17 +328,19 @@ def build_es_conn_config(conf):
     'es_username' and 'es_password', this will return a new dictionary
     with properly initialized values for 'es_host', 'es_port', 'use_ssl' and 'http_auth' which
     will be a basicauth username:password formatted string """
-    parsed_conf = {}
-    parsed_conf['use_ssl'] = os.environ.get('ES_USE_SSL', False)
-    parsed_conf['verify_certs'] = True
-    parsed_conf['ca_certs'] = None
-    parsed_conf['client_cert'] = None
-    parsed_conf['client_key'] = None
-    parsed_conf['http_auth'] = None
-    parsed_conf['es_username'] = None
-    parsed_conf['es_password'] = None
-    parsed_conf['aws_region'] = None
-    parsed_conf['profile'] = None
+    parsed_conf = {
+        'use_ssl': os.environ.get('ES_USE_SSL', False),
+        'verify_certs': True,
+        'ca_certs': None,
+        'client_cert': None,
+        'client_key': None,
+        'http_auth': None,
+        'es_username': None,
+        'es_password': None,
+        'aws_region': None,
+        'profile': None,
+    }
+
     parsed_conf['es_host'] = os.environ.get('ES_HOST', conf['es_host'])
     parsed_conf['es_port'] = int(os.environ.get('ES_PORT', conf['es_port']))
     parsed_conf['es_url_prefix'] = ''
@@ -413,7 +411,7 @@ def flatten_dict(dct, delim='.', prefix=''):
     ret = {}
     for key, val in list(dct.items()):
         if type(val) == dict:
-            ret.update(flatten_dict(val, prefix=prefix + key + delim))
+            ret |= flatten_dict(val, prefix=prefix + key + delim)
         else:
             ret[prefix + key] = val
     return ret

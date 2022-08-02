@@ -115,15 +115,15 @@ class RulesLoader(object):
                 rule = self.load_configuration(rule_file, conf, args)
                 # A rule failed to load, don't try to process it
                 if not rule:
-                    logging.error('Invalid rule file skipped: %s' % rule_file)
+                    logging.error(f'Invalid rule file skipped: {rule_file}')
                     continue
                 # By setting "is_enabled: False" in rule file, a rule is easily disabled
                 if 'is_enabled' in rule and not rule['is_enabled']:
                     continue
                 if rule['name'] in names:
-                    raise EAException('Duplicate rule named %s' % (rule['name']))
+                    raise EAException(f"Duplicate rule named {rule['name']}")
             except EAException as e:
-                raise EAException('Error loading file %s: %s' % (rule_file, e))
+                raise EAException(f'Error loading file {rule_file}: {e}')
 
             rules.append(rule)
             names.append(rule['name'])
@@ -263,7 +263,7 @@ class RulesLoader(object):
             if 'kibana_discover_to_timedelta' in rule:
                 rule['kibana_discover_to_timedelta'] = datetime.timedelta(**rule['kibana_discover_to_timedelta'])
         except (KeyError, TypeError) as e:
-            raise EAException('Invalid time format used: %s' % e)
+            raise EAException(f'Invalid time format used: {e}')
 
         # Set defaults, copy defaults from config.yaml
         for key, val in list(self.base_config.items()):
@@ -324,7 +324,10 @@ class RulesLoader(object):
 
         # Make sure we have required options
         if self.required_locals - frozenset(list(rule.keys())):
-            raise EAException('Missing required option(s): %s' % (', '.join(self.required_locals - frozenset(list(rule.keys())))))
+            raise EAException(
+                f"Missing required option(s): {', '.join(self.required_locals - frozenset(list(rule.keys())))}"
+            )
+
 
         if 'include' in rule and type(rule['include']) != list:
             raise EAException('include option must be a list')
@@ -379,14 +382,14 @@ class RulesLoader(object):
                             'Consider creating a dashboard and using use_kibana_dashboard instead.')
 
         # Check that doc_type is provided if use_count/terms_query
-        if rule.get('use_count_query') or rule.get('use_terms_query'):
-            if 'doc_type' not in rule:
-                raise EAException('doc_type must be specified.')
+        if (
+            rule.get('use_count_query') or rule.get('use_terms_query')
+        ) and 'doc_type' not in rule:
+            raise EAException('doc_type must be specified.')
 
         # Check that query_key is set if use_terms_query
-        if rule.get('use_terms_query'):
-            if 'query_key' not in rule:
-                raise EAException('query_key must be specified with use_terms_query')
+        if rule.get('use_terms_query') and 'query_key' not in rule:
+            raise EAException('query_key must be specified with use_terms_query')
 
         # Warn if use_strf_index is used with %y, %M or %D
         # (%y = short year, %M = minutes, %D = full date)
@@ -411,7 +414,10 @@ class RulesLoader(object):
             else:
                 enhancement = get_module(enhancement_name)
             if not issubclass(enhancement, enhancements.BaseEnhancement):
-                raise EAException("Enhancement module %s not a subclass of BaseEnhancement" % enhancement_name)
+                raise EAException(
+                    f"Enhancement module {enhancement_name} not a subclass of BaseEnhancement"
+                )
+
             match_enhancements.append(enhancement(rule))
         rule['match_enhancements'] = match_enhancements
 
@@ -421,18 +427,24 @@ class RulesLoader(object):
         else:
             rule['type'] = get_module(rule['type'])
             if not issubclass(rule['type'], ruletypes.RuleType):
-                raise EAException('Rule module %s is not a subclass of RuleType' % (rule['type']))
+                raise EAException(f"Rule module {rule['type']} is not a subclass of RuleType")
 
         # Make sure we have required alert and type options
         reqs = rule['type'].required_options
 
         if reqs - frozenset(list(rule.keys())):
-            raise EAException('Missing required option(s): %s' % (', '.join(reqs - frozenset(list(rule.keys())))))
+            raise EAException(
+                f"Missing required option(s): {', '.join(reqs - frozenset(list(rule.keys())))}"
+            )
+
         # Instantiate rule
         try:
             rule['type'] = rule['type'](rule, args)
         except (KeyError, EAException) as e:
-            raise EAException('Error initializing rule %s: %s' % (rule['name'], e)).with_traceback(sys.exc_info()[2])
+            raise EAException(
+                f"Error initializing rule {rule['name']}: {e}"
+            ).with_traceback(sys.exc_info()[2])
+
         # Instantiate alerts only if we're not in debug mode
         # In debug mode alerts are not actually sent so don't bother instantiating them
         if not args or not args.debug:
@@ -455,11 +467,11 @@ class RulesLoader(object):
         def create_alert(alert, alert_config):
             alert_class = self.alerts_mapping.get(alert) or get_module(alert)
             if not issubclass(alert_class, alerts.Alerter):
-                raise EAException('Alert module %s is not a subclass of Alerter' % alert)
+                raise EAException(f'Alert module {alert} is not a subclass of Alerter')
             missing_options = (rule['type'].required_options | alert_class.required_options) - frozenset(
                 alert_config or [])
             if missing_options:
-                raise EAException('Missing required option(s): %s' % (', '.join(missing_options)))
+                raise EAException(f"Missing required option(s): {', '.join(missing_options)}")
             return alert_class(alert_config)
 
         try:
@@ -472,7 +484,10 @@ class RulesLoader(object):
             alert_field = [create_alert(a, b) for a, b in alert_field]
 
         except (KeyError, EAException) as e:
-            raise EAException('Error initiating alert %s: %s' % (rule['alert'], e)).with_traceback(sys.exc_info()[2])
+            raise EAException(
+                f"Error initiating alert {rule['alert']}: {e}"
+            ).with_traceback(sys.exc_info()[2])
+
 
         return alert_field
 
@@ -516,16 +531,16 @@ class FileRulesLoader(RulesLoader):
 
     def get_hashes(self, conf, use_rule=None):
         rule_files = self.get_names(conf, use_rule)
-        rule_mod_times = {}
-        for rule_file in rule_files:
-            rule_mod_times[rule_file] = self.get_rule_file_hash(rule_file)
-        return rule_mod_times
+        return {
+            rule_file: self.get_rule_file_hash(rule_file)
+            for rule_file in rule_files
+        }
 
     def get_yaml(self, filename):
         try:
             return yaml_loader(filename)
         except yaml.scanner.ScannerError as e:
-            raise EAException('Could not parse file %s: %s' % (filename, e))
+            raise EAException(f'Could not parse file {filename}: {e}')
 
     def get_import_rule(self, rule):
         """

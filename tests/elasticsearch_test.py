@@ -33,16 +33,16 @@ class TestElasticsearch(object):
     # is torn down after the test run(eg. running tests in a test environment such as Travis)
     def test_create_indices(self, es_client):
         elastalert.create_index.create_index_mappings(es_client=es_client, ea_index=test_index)
-        indices_mappings = es_client.indices.get_mapping(test_index + '*')
+        indices_mappings = es_client.indices.get_mapping(f'{test_index}*')
         print(('-' * 50))
         print((json.dumps(indices_mappings, indent=2)))
         print(('-' * 50))
         if es_client.is_atleastsix():
             assert test_index in indices_mappings
-            assert test_index + '_error' in indices_mappings
-            assert test_index + '_status' in indices_mappings
-            assert test_index + '_silence' in indices_mappings
-            assert test_index + '_past' in indices_mappings
+            assert f'{test_index}_error' in indices_mappings
+            assert f'{test_index}_status' in indices_mappings
+            assert f'{test_index}_silence' in indices_mappings
+            assert f'{test_index}_past' in indices_mappings
         else:
             assert 'elastalert' in indices_mappings[test_index]['mappings']
             assert 'elastalert_error' in indices_mappings[test_index]['mappings']
@@ -92,10 +92,7 @@ class TestElasticsearch(object):
         start = datetime.datetime.now(tz=dateutil.tz.tzutc()).replace(microsecond=0)
         end = start + datetime.timedelta(days=1)
         ea.current_es = es_client
-        if ea.current_es.is_atleastfive():
-            ea.rules[0]['five'] = True
-        else:
-            ea.rules[0]['five'] = False
+        ea.rules[0]['five'] = bool(ea.current_es.is_atleastfive())
         ea.thread_data.current_es = ea.current_es
         hits = ea.get_hits(ea.rules[0], start, end, test_index)
 

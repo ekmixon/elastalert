@@ -27,7 +27,7 @@ from elastalert.util import ts_to_dt
 def hits(size, **kwargs):
     ret = []
     for n in range(size):
-        ts = ts_to_dt('2014-09-26T12:%s:%sZ' % (n / 60, n % 60))
+        ts = ts_to_dt(f'2014-09-26T12:{n / 60}:{n % 60}Z')
         n += 1
         event = create_event(ts, **kwargs)
         ret.append(event)
@@ -41,22 +41,17 @@ def create_event(timestamp, timestamp_field='@timestamp', **kwargs):
 
 
 def create_bucket_aggregation(agg_name, buckets):
-    agg = {agg_name: {'buckets': buckets}}
-    return agg
+    return {agg_name: {'buckets': buckets}}
 
 
 def create_percentage_match_agg(match_count, other_count):
-    agg = create_bucket_aggregation(
-        'percentage_match_aggs', {
-            'match_bucket': {
-                'doc_count': match_count
-            },
-            '_other_': {
-                'doc_count': other_count
-            }
-        }
+    return create_bucket_aggregation(
+        'percentage_match_aggs',
+        {
+            'match_bucket': {'doc_count': match_count},
+            '_other_': {'doc_count': other_count},
+        },
     )
-    return agg
 
 
 def assert_matches_have(matches, terms):
@@ -494,11 +489,13 @@ def test_whitelist_dont_ignore_nulls():
               {'@timestamp': ts_to_dt('2014-09-26T12:34:58Z'), 'term': 'also good'},
               {'@timestamp': ts_to_dt('2014-09-26T12:34:59Z'), 'term': 'really bad'},
               {'@timestamp': ts_to_dt('2014-09-26T12:35:00Z'), 'no_term': 'bad'}]
-    rules = {'whitelist': ['good', 'also good'],
-             'compare_key': 'term',
-             'ignore_null': True,
-             'timestamp_field': '@timestamp'}
-    rules['ignore_null'] = False
+    rules = {
+        'whitelist': ['good', 'also good'],
+        'compare_key': 'term',
+        'timestamp_field': '@timestamp',
+        'ignore_null': False,
+    }
+
     rule = WhitelistRule(rules)
     rule.add_data(events)
     assert_matches_have(rule.matches, [('term', 'bad'), ('term', 'really bad'), ('no_term', 'bad')])
@@ -603,7 +600,7 @@ def test_new_term():
 
     # Key3 doesn't cause another alert for field b
     rule.add_data([{'@timestamp': ts_now(), 'a': 'key2', 'b': 'key3'}])
-    assert rule.matches == []
+    assert not rule.matches
 
     # Missing_field
     rules['alert_on_missing_field'] = True
@@ -676,7 +673,7 @@ def test_new_term_with_terms():
     # Key3 doesn't cause another alert
     terms = {ts_now(): [{'key': 'key3', 'doc_count': 1}]}
     rule.add_terms_data(terms)
-    assert rule.matches == []
+    assert not rule.matches
 
 
 def test_new_term_with_composite_fields():
@@ -743,7 +740,7 @@ def test_new_term_with_composite_fields():
 
     # New values in other fields that are not part of the composite key should not cause an alert
     rule.add_data([{'@timestamp': ts_now(), 'a': 'key1', 'b': 'key2', 'c': 'key4', 'd': 'unrelated_value'}])
-    assert len(rule.matches) == 0
+    assert not rule.matches
     rule.matches = []
 
     # Verify nested fields work properly
@@ -784,7 +781,7 @@ def test_flatline():
     assert rule.matches == []
 
     # Add hits with timestamps 2014-09-26T12:00:00 --> 2014-09-26T12:00:09
-    rule.add_data(events[0:10])
+    rule.add_data(events[:10])
 
     # This will be run at the end of the hits
     rule.garbage_collect(ts_to_dt('2014-09-26T12:00:11Z'))
@@ -869,13 +866,18 @@ def test_flatline_query_key():
     timestamp = '2014-09-26T12:00:45Z'
     rule.garbage_collect(ts_to_dt(timestamp))
     assert len(rule.matches) == 2
-    assert set(['key1', 'key2']) == set([m['key'] for m in rule.matches if m['@timestamp'] == timestamp])
+    assert {'key1', 'key2'} == {
+        m['key'] for m in rule.matches if m['@timestamp'] == timestamp
+    }
+
 
     # Next time the rule runs, all 3 keys still have no data, so all three will cause an alert
     timestamp = '2014-09-26T12:01:20Z'
     rule.garbage_collect(ts_to_dt(timestamp))
     assert len(rule.matches) == 5
-    assert set(['key1', 'key2', 'key3']) == set([m['key'] for m in rule.matches if m['@timestamp'] == timestamp])
+    assert {'key1', 'key2', 'key3'} == {
+        m['key'] for m in rule.matches if m['@timestamp'] == timestamp
+    }
 
 
 def test_flatline_forget_query_key():
@@ -903,7 +905,7 @@ def test_flatline_forget_query_key():
 
     # key1 was forgotten, so no more matches
     rule.garbage_collect(ts_to_dt('2014-09-26T12:01:11Z'))
-    assert rule.matches == []
+    assert not rule.matches
 
 
 def test_cardinality_max():
@@ -939,7 +941,7 @@ def test_cardinality_max():
     for user in users:
         event = {'@timestamp': datetime.datetime.now() + datetime.timedelta(minutes=15), 'user': user}
         rule.add_data([event])
-        assert len(rule.matches) == 0
+        assert not rule.matches
 
 
 def test_cardinality_min():
@@ -984,7 +986,12 @@ def test_cardinality_qk():
     # Add 3 different usernames, one value each
     users = ['foo', 'bar', 'baz']
     for user in users:
-        event = {'@timestamp': datetime.datetime.now(), 'user': user, 'foo': 'foo' + user}
+        event = {
+            '@timestamp': datetime.datetime.now(),
+            'user': user,
+            'foo': f'foo{user}',
+        }
+
         rule.add_data([event])
         assert len(rule.matches) == 0
     rule.garbage_collect(datetime.datetime.now())
@@ -1041,16 +1048,18 @@ def test_cardinality_nested_cardinality_field():
     for ip in ips:
         event = {'@timestamp': datetime.datetime.now() + datetime.timedelta(minutes=15), 'd': {'ip': ip}}
         rule.add_data([event])
-        assert len(rule.matches) == 0
+        assert not rule.matches
 
 
 def test_base_aggregation_constructor():
-    rules = {'bucket_interval_timedelta': datetime.timedelta(seconds=10),
-             'buffer_time': datetime.timedelta(minutes=1),
-             'timestamp_field': '@timestamp'}
+    rules = {
+        'bucket_interval_timedelta': datetime.timedelta(seconds=10),
+        'buffer_time': datetime.timedelta(minutes=1),
+        'timestamp_field': '@timestamp',
+        'bucket_interval': {'seconds': 10},
+    }
 
-    # Test time period constructor logic
-    rules['bucket_interval'] = {'seconds': 10}
+
     rule = BaseAggregationRule(rules)
     assert rule.rules['bucket_interval_period'] == '10s'
 

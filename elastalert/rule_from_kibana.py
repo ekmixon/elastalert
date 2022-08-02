@@ -16,7 +16,7 @@ def main():
 
     es = elasticsearch_client({'es_host': es_host, 'es_port': es_port, 'send_get_body_as': send_get_body_as})
 
-    print("Elastic Version:" + es.es_version)
+    print(f"Elastic Version:{es.es_version}")
 
     query = {'query': {'term': {'_id': db_name}}}
 
@@ -28,7 +28,7 @@ def main():
         res = es.deprecated_search(index='kibana-int', doc_type='dashboard', body=query, _source_include=['dashboard'])
 
     if not res['hits']['hits']:
-        print("No dashboard %s found" % (db_name))
+        print(f"No dashboard {db_name} found")
         exit()
 
     db = json.loads(res['hits']['hits'][0]['_source']['dashboard'])
@@ -36,9 +36,9 @@ def main():
 
     print("\nPartial Config file")
     print("-----------\n")
-    print("name: %s" % (db_name))
-    print("es_host: %s" % (es_host))
-    print("es_port: %s" % (es_port))
+    print(f"name: {db_name}")
+    print(f"es_host: {es_host}")
+    print(f"es_port: {es_port}")
     print("filter:")
     print(yaml.safe_dump(config_filters))
 

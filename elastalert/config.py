@@ -66,7 +66,10 @@ def load_conf(args, defaults=None, overwrites=None):
 
     # Make sure we have all required globals
     if required_globals - frozenset(list(conf.keys())):
-        raise EAException('%s must contain %s' % (filename, ', '.join(required_globals - frozenset(list(conf.keys())))))
+        raise EAException(
+            f"{filename} must contain {', '.join(required_globals - frozenset(list(conf.keys())))}"
+        )
+
 
     conf.setdefault('writeback_alias', 'elastalert_alerts')
     conf.setdefault('max_query_size', 10000)
@@ -89,7 +92,7 @@ def load_conf(args, defaults=None, overwrites=None):
         else:
             conf['old_query_limit'] = datetime.timedelta(weeks=1)
     except (KeyError, TypeError) as e:
-        raise EAException('Invalid time format used: %s' % e)
+        raise EAException(f'Invalid time format used: {e}')
 
     # Initialise the rule loader and load each rule configuration
     rules_loader_class = loader_mapping.get(conf['rules_loader']) or get_module(conf['rules_loader'])
@@ -99,7 +102,9 @@ def load_conf(args, defaults=None, overwrites=None):
     # Make sure we have all required globals
     if rules_loader.required_globals - frozenset(list(conf.keys())):
         raise EAException(
-            '%s must contain %s' % (filename, ', '.join(rules_loader.required_globals - frozenset(list(conf.keys())))))
+            f"{filename} must contain {', '.join(rules_loader.required_globals - frozenset(list(conf.keys())))}"
+        )
+
 
     return conf
 
@@ -117,9 +122,11 @@ def configure_logging(args, conf):
 
     # re-enable INFO log level on elastalert_logger in verbose/debug mode
     # (but don't touch it if it is already set to INFO or below by config)
-    if args.verbose or args.debug:
-        if elastalert_logger.level > logging.INFO or elastalert_logger.level == logging.NOTSET:
-            elastalert_logger.setLevel(logging.INFO)
+    if (args.verbose or args.debug) and (
+        elastalert_logger.level > logging.INFO
+        or elastalert_logger.level == logging.NOTSET
+    ):
+        elastalert_logger.setLevel(logging.INFO)
 
     if args.debug:
         elastalert_logger.info(

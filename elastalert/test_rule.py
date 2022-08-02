@@ -58,7 +58,7 @@ class MockElastAlerter(object):
         try:
             ElastAlerter.modify_rule_for_ES5(conf)
         except EAException as ea:
-            print('Invalid filter provided:', str(ea), file=sys.stderr)
+            print('Invalid filter provided:', ea, file=sys.stderr)
             if args.stop_error:
                 exit(3)
             return None
@@ -125,7 +125,10 @@ class MockElastAlerter(object):
             self.formatted_output['terms'] = list(terms.keys())
             self.formatted_output['result'] = terms
         else:
-            print("Got %s hits from the last %s day%s" % (num_hits, args.days, 's' if args.days > 1 else ''))
+            print(
+                f"Got {num_hits} hits from the last {args.days} day{'s' if args.days > 1 else ''}"
+            )
+
             print("\nAvailable terms in first hit:")
             print_terms(terms, '')
 
@@ -137,16 +140,15 @@ class MockElastAlerter(object):
         if ck and not lookup_es_key(terms, ck):
             print("Warning: compare key %s is either missing or null!", file=sys.stderr)
 
-        include = conf.get('include')
-        if include:
+        if include := conf.get('include'):
             for term in include:
                 if not lookup_es_key(terms, term) and '*' not in term:
-                    print("Included term %s may be missing or null" % (term), file=sys.stderr)
+                    print(f"Included term {term} may be missing or null", file=sys.stderr)
 
         for term in conf.get('top_count_keys', []):
             # If the index starts with 'logstash', fields with .raw will be available but won't in _source
             if term not in terms and not (term.endswith('.raw') and term[:-4] in terms and index.startswith('logstash')):
-                print("top_count_key %s may be missing" % (term), file=sys.stderr)
+                print(f"top_count_key {term} may be missing", file=sys.stderr)
         if not args.formatted_output:
             print('')  # Newline
 
@@ -163,31 +165,38 @@ class MockElastAlerter(object):
             num_hits = len(res['hits']['hits'])
 
             if args.save:
-                print("Downloaded %s documents to save" % (num_hits))
+                print(f"Downloaded {num_hits} documents to save")
             return res['hits']['hits']
 
     def mock_count(self, rule, start, end, index):
         """ Mocks the effects of get_hits_count using global data instead of Elasticsearch """
-        count = 0
-        for doc in self.data:
-            if start <= ts_to_dt(doc[rule['timestamp_field']]) < end:
-                count += 1
+        count = sum(
+            start <= ts_to_dt(doc[rule['timestamp_field']]) < end
+            for doc in self.data
+        )
+
         return {end: count}
 
     def mock_hits(self, rule, start, end, index, scroll=False):
         """ Mocks the effects of get_hits using global data instead of Elasticsearch. """
-        docs = []
-        for doc in self.data:
-            if start <= ts_to_dt(doc[rule['timestamp_field']]) < end:
-                docs.append(doc)
+        docs = [
+            doc
+            for doc in self.data
+            if start <= ts_to_dt(doc[rule['timestamp_field']]) < end
+        ]
 
         # Remove all fields which don't match 'include'
         for doc in docs:
-            fields_to_remove = []
-            for field in doc:
-                if field != '_id':
-                    if not any([re.match(incl.replace('*', '.*'), field) for incl in rule['include']]):
-                        fields_to_remove.append(field)
+            fields_to_remove = [
+                field
+                for field in doc
+                if field != '_id'
+                and not any(
+                    re.match(incl.replace('*', '.*'), field)
+                    for incl in rule['include']
+                )
+            ]
+
             list(map(doc.pop, fields_to_remove))
 
         # Separate _source and _id, convert timestamps
@@ -204,10 +213,11 @@ class MockElastAlerter(object):
         for doc in self.data:
             if key not in doc:
                 continue
-            if start <= ts_to_dt(doc[rule['timestamp_field']]) < end:
-                if qk is None or doc[rule['query_key']] == qk:
-                    buckets.setdefault(doc[key], 0)
-                    buckets[doc[key]] += 1
+            if start <= ts_to_dt(doc[rule['timestamp_field']]) < end and (
+                qk is None or doc[rule['query_key']] == qk
+            ):
+                buckets.setdefault(doc[key], 0)
+                buckets[doc[key]] += 1
         counts = list(buckets.items())
         counts.sort(key=lambda x: x[1], reverse=True)
         if size:
@@ -243,7 +253,7 @@ class MockElastAlerter(object):
                 endtime = self.data[-1][timestamp_field]
                 endtime = ts_to_dt(endtime) + datetime.timedelta(seconds=1)
             except KeyError as e:
-                print("All documents must have a timestamp and _id: %s" % (e), file=sys.stderr)
+                print(f"All documents must have a timestamp and _id: {e}", file=sys.stderr)
                 if args.stop_error:
                     exit(4)
                 return None
@@ -268,7 +278,10 @@ class MockElastAlerter(object):
                     try:
                         endtime = ts_to_dt(args.end)
                     except (TypeError, ValueError):
-                        self.handle_error("%s is not a valid ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS+XX:00)" % (args.end))
+                        self.handle_error(
+                            f"{args.end} is not a valid ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS+XX:00)"
+                        )
+
                         exit(4)
             else:
                 endtime = ts_now()
@@ -276,7 +289,10 @@ class MockElastAlerter(object):
                 try:
                     starttime = ts_to_dt(args.start)
                 except (TypeError, ValueError):
-                    self.handle_error("%s is not a valid ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS+XX:00)" % (args.start))
+                    self.handle_error(
+                        f"{args.start} is not a valid ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS+XX:00)"
+                    )
+
                     exit(4)
             else:
                 # if days given as command line argument

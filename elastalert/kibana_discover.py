@@ -71,18 +71,12 @@ def generate_kibana_discover_url(rule, match):
 
     else:
         logging.warning(
-            'Unknown kibana discover application version %s for rule %s' % (
-                kibana_version,
-                rule.get('name', '<MISSING NAME>')
-            )
+            f"Unknown kibana discover application version {kibana_version} for rule {rule.get('name', '<MISSING NAME>')}"
         )
+
         return None
 
-    return "%s?_g=%s&_a=%s" % (
-        os.path.expandvars(discover_app_url),
-        urllib.parse.quote(globalState),
-        urllib.parse.quote(appState)
-    )
+    return f"{os.path.expandvars(discover_app_url)}?_g={urllib.parse.quote(globalState)}&_a={urllib.parse.quote(appState)}"
 
 
 def kibana6_disover_global_state(from_time, to_time):

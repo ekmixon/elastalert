@@ -1185,7 +1185,10 @@ def test_ms_teams_uses_color_and_fixed_width_text():
         alert.alert([match])
     body = BasicMatchString(rule, match).__str__()
     body = body.replace('`', "'")
-    body = "```{0}```".format('```\n\n```'.join(x for x in body.split('\n'))).replace('\n``````', '')
+    body = "```{0}```".format('```\n\n```'.join(body.split('\n'))).replace(
+        '\n``````', ''
+    )
+
     expected_data = {
         '@type': 'MessageCard',
         '@context': 'http://schema.org/extensions',
@@ -2122,10 +2125,12 @@ def test_stride_plain_text():
         data=mock.ANY,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(rule['stride_access_token'])},
+            'Authorization': f"Bearer {rule['stride_access_token']}",
+        },
         verify=True,
-        proxies=None
+        proxies=None,
     )
+
     assert expected_data == json.loads(
         mock_post_request.call_args_list[0][1]['data'])
 
@@ -2168,10 +2173,12 @@ def test_stride_underline_text():
         data=mock.ANY,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(rule['stride_access_token'])},
+            'Authorization': f"Bearer {rule['stride_access_token']}",
+        },
         verify=True,
-        proxies=None
+        proxies=None,
     )
+
     assert expected_data == json.loads(
         mock_post_request.call_args_list[0][1]['data'])
 
@@ -2214,10 +2221,12 @@ def test_stride_bold_text():
         data=mock.ANY,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(rule['stride_access_token'])},
+            'Authorization': f"Bearer {rule['stride_access_token']}",
+        },
         verify=True,
-        proxies=None
+        proxies=None,
     )
+
     assert expected_data == json.loads(
         mock_post_request.call_args_list[0][1]['data'])
 
@@ -2260,10 +2269,12 @@ def test_stride_strong_text():
         data=mock.ANY,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(rule['stride_access_token'])},
+            'Authorization': f"Bearer {rule['stride_access_token']}",
+        },
         verify=True,
-        proxies=None
+        proxies=None,
     )
+
     assert expected_data == json.loads(
         mock_post_request.call_args_list[0][1]['data'])
 
@@ -2306,10 +2317,12 @@ def test_stride_hyperlink():
         data=mock.ANY,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(rule['stride_access_token'])},
+            'Authorization': f"Bearer {rule['stride_access_token']}",
+        },
         verify=True,
-        proxies=None
+        proxies=None,
     )
+
     assert expected_data == json.loads(
         mock_post_request.call_args_list[0][1]['data'])
 
@@ -2355,10 +2368,12 @@ def test_stride_html():
         data=mock.ANY,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Bearer {}'.format(rule['stride_access_token'])},
+            'Authorization': f"Bearer {rule['stride_access_token']}",
+        },
         verify=True,
-        proxies=None
+        proxies=None,
     )
+
     assert expected_data == json.loads(
         mock_post_request.call_args_list[0][1]['data'])
 
@@ -2516,7 +2531,9 @@ def test_alerta_auth(ea):
         verify=True,
         headers={
             'content-type': 'application/json',
-            'Authorization': 'Key {}'.format(rule['alerta_api_key'])})
+            'Authorization': f"Key {rule['alerta_api_key']}",
+        },
+    )
 
 
 def test_alerta_new_style(ea):

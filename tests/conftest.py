@@ -101,13 +101,13 @@ class mock_es_sixsix_client(object):
 
         def writeback_index_side_effect(index, doc_type):
             if doc_type == 'silence':
-                return index + '_silence'
+                return f'{index}_silence'
             elif doc_type == 'past_elastalert':
-                return index + '_past'
+                return f'{index}_past'
             elif doc_type == 'elastalert_status':
-                return index + '_status'
+                return f'{index}_status'
             elif doc_type == 'elastalert_error':
-                return index + '_error'
+                return f'{index}_error'
             return index
 
         self.resolve_writeback_index = mock.Mock(side_effect=writeback_index_side_effect)

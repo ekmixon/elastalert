@@ -37,16 +37,22 @@ class OpsGenieAlerter(Alerter):
 
     def _parse_responders(self, responders, responder_args, matches, default_responders):
         if responder_args:
-            formated_responders = list()
-            responders_values = dict((k, lookup_es_key(matches[0], v)) for k, v in responder_args.items())
-            responders_values = dict((k, v) for k, v in responders_values.items() if v)
+            formated_responders = []
+            responders_values = {
+                k: lookup_es_key(matches[0], v) for k, v in responder_args.items()
+            }
+
+            responders_values = {k: v for k, v in responders_values.items() if v}
 
             for responder in responders:
                 responder = str(responder)
                 try:
                     formated_responders.append(responder.format(**responders_values))
                 except KeyError as error:
-                    logging.warn("OpsGenieAlerter: Cannot create responder for OpsGenie Alert. Key not foud: %s. " % (error))
+                    logging.warn(
+                        f"OpsGenieAlerter: Cannot create responder for OpsGenie Alert. Key not foud: {error}. "
+                    )
+
             if not formated_responders:
                 logging.warn("OpsGenieAlerter: no responders can be formed. Trying the default responder ")
                 if not default_responders:
@@ -74,8 +80,7 @@ class OpsGenieAlerter(Alerter):
             self.message = self.custom_message.format(**matches[0])
         self.recipients = self._parse_responders(self.recipients, self.recipients_args, matches, self.default_reciepients)
         self.teams = self._parse_responders(self.teams, self.teams_args, matches, self.default_teams)
-        post = {}
-        post['message'] = self.message
+        post = {'message': self.message}
         if self.account:
             post['user'] = self.account
         if self.recipients:
@@ -98,16 +103,16 @@ class OpsGenieAlerter(Alerter):
         if self.alias is not None:
             post['alias'] = self.alias.format(**matches[0])
 
-        details = self.get_details(matches)
-        if details:
+        if details := self.get_details(matches):
             post['details'] = details
 
         logging.debug(json.dumps(post))
 
         headers = {
             'Content-Type': 'application/json',
-            'Authorization': 'GenieKey {}'.format(self.api_key),
+            'Authorization': f'GenieKey {self.api_key}',
         }
+
         # set https proxy, if it was provided
         proxies = {'https': self.opsgenie_proxy} if self.opsgenie_proxy else None
 
@@ -124,13 +129,12 @@ class OpsGenieAlerter(Alerter):
             raise EAException("Error sending alert: {0}".format(err))
 
     def create_default_title(self, matches):
-        subject = 'ElastAlert: %s' % (self.rule['name'])
+        subject = f"ElastAlert: {self.rule['name']}"
 
         # If the rule has a query_key, add that value plus timestamp to subject
         if 'query_key' in self.rule:
-            qk = matches[0].get(self.rule['query_key'])
-            if qk:
-                subject += ' - %s' % (qk)
+            if qk := matches[0].get(self.rule['query_key']):
+                subject += f' - {qk}'
 
         return subject
 
@@ -149,8 +153,7 @@ class OpsGenieAlerter(Alerter):
 
             for i, subject_value in enumerate(opsgenie_subject_values):
                 if subject_value is None:
-                    alert_value = self.rule.get(self.opsgenie_subject_args[i])
-                    if alert_value:
+                    if alert_value := self.rule.get(self.opsgenie_subject_args[i]):
                         opsgenie_subject_values[i] = alert_value
 
             opsgenie_subject_values = ['<MISSING VALUE>' if val is None else val for val in opsgenie_subject_values]

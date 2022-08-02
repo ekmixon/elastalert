@@ -35,10 +35,13 @@ def _set_hits(ea_inst, hits):
 def generate_hits(timestamps, **kwargs):
     hits = []
     for i, ts in enumerate(timestamps):
-        data = {'_id': 'id{}'.format(i),
-                '_source': {'@timestamp': ts},
-                '_type': 'logs',
-                '_index': 'idx'}
+        data = {
+            '_id': f'id{i}',
+            '_source': {'@timestamp': ts},
+            '_type': 'logs',
+            '_index': 'idx',
+        }
+
         for key, item in kwargs.items():
             data['_source'][key] = item
         # emulate process_hits(), add metadata to _source
@@ -52,7 +55,7 @@ def assert_alerts(ea_inst, calls):
     """ Takes a list of lists of timestamps. Asserts that an alert was called for each list, containing those timestamps. """
     assert ea_inst.rules[0]['alert'][0].alert.call_count == len(calls)
     for call_num, call_args in enumerate(ea_inst.rules[0]['alert'][0].alert.call_args_list):
-        assert not any([match['@timestamp'] not in calls[call_num] for match in call_args[0][0]])
+        assert all(match['@timestamp'] in calls[call_num] for match in call_args[0][0])
         assert len(call_args[0][0]) == len(calls[call_num])
 
 
@@ -669,7 +672,7 @@ def test_silence_query_key(ea):
 
 
 def test_realert(ea):
-    hits = ['2014-09-26T12:35:%sZ' % (x) for x in range(60)]
+    hits = [f'2014-09-26T12:35:{x}Z' for x in range(60)]
     matches = [{'@timestamp': x} for x in hits]
     ea.thread_data.current_es.search.return_value = hits
     with mock.patch('elastalert.elastalert.elasticsearch_client'):
@@ -982,12 +985,17 @@ def test_kibana_dashboard(ea):
         match['foo,bar'] = 'cat, dog'
         url = ea.use_kibana_link(ea.rules[0], match)
         db = json.loads(mock_es.index.call_args_list[-1][1]['body']['dashboard'])
-        found_filters = 0
-        for filter_id, filter_dict in list(db['services']['filter']['list'].items()):
-            if (filter_dict['field'] == 'foo' and filter_dict['query'] == '"cat"') or \
-                    (filter_dict['field'] == 'bar' and filter_dict['query'] == '"dog"'):
-                found_filters += 1
-                continue
+        found_filters = sum(
+            (filter_dict['field'] == 'foo' and filter_dict['query'] == '"cat"')
+            or (
+                filter_dict['field'] == 'bar'
+                and filter_dict['query'] == '"dog"'
+            )
+            for filter_id, filter_dict in list(
+                db['services']['filter']['list'].items()
+            )
+        )
+
         assert found_filters == 2
 
 
@@ -1024,7 +1032,7 @@ def test_rule_changes(ea):
 
     # A new rule with a conflicting name wont load
     new_hashes = copy.copy(new_hashes)
-    new_hashes.update({'rules/rule4.yaml': 'asdf'})
+    new_hashes['rules/rule4.yaml'] = 'asdf'
     with mock.patch.object(ea.conf['rules_loader'], 'get_hashes') as mock_hashes:
         with mock.patch.object(ea.conf['rules_loader'], 'load_configuration') as mock_load:
             with mock.patch.object(ea, 'send_notification_email') as mock_send:
@@ -1034,11 +1042,11 @@ def test_rule_changes(ea):
                 ea.load_rule_changes()
                 mock_send.assert_called_once_with(exception=mock.ANY, rule_file='rules/rule4.yaml')
     assert len(ea.rules) == 3
-    assert not any(['new' in rule for rule in ea.rules])
+    assert all('new' not in rule for rule in ea.rules)
 
     # A new rule with is_enabled=False wont load
     new_hashes = copy.copy(new_hashes)
-    new_hashes.update({'rules/rule4.yaml': 'asdf'})
+    new_hashes['rules/rule4.yaml'] = 'asdf'
     with mock.patch.object(ea.conf['rules_loader'], 'get_hashes') as mock_hashes:
         with mock.patch.object(ea.conf['rules_loader'], 'load_configuration') as mock_load:
             mock_load.return_value = {'filter': [], 'name': 'rule4', 'new': 'stuff', 'is_enabled': False,
@@ -1046,7 +1054,7 @@ def test_rule_changes(ea):
             mock_hashes.return_value = new_hashes
             ea.load_rule_changes()
     assert len(ea.rules) == 3
-    assert not any(['new' in rule for rule in ea.rules])
+    assert all('new' not in rule for rule in ea.rules)
 
     # An old rule which didn't load gets reloaded
     new_hashes = copy.copy(new_hashes)
@@ -1080,7 +1088,11 @@ def test_strf_index(ea):
     end = ts_to_dt('2015-01-02T16:15:14Z')
     assert ea.get_index(ea.rules[0], start, end) == 'logstash-2015.01.02'
     end = ts_to_dt('2015-01-03T01:02:03Z')
-    assert set(ea.get_index(ea.rules[0], start, end).split(',')) == set(['logstash-2015.01.02', 'logstash-2015.01.03'])
+    assert set(ea.get_index(ea.rules[0], start, end).split(',')) == {
+        'logstash-2015.01.02',
+        'logstash-2015.01.03',
+    }
+
 
     # Test formatting for wildcard
     assert ea.get_index(ea.rules[0]) == 'logstash-*'
@@ -1260,12 +1272,16 @@ def test_notify_email(ea):
         # With ea.notify email but as single string
         ea.rules[0]['notify_email'] = 'foo@foo.foo'
         ea.send_notification_email('omg', rule=ea.rules[0])
-        assert set(mock_smtp.sendmail.call_args_list[2][0][1]) == set(['baz@baz.baz', 'foo@foo.foo'])
+        assert set(mock_smtp.sendmail.call_args_list[2][0][1]) == {
+            'baz@baz.baz',
+            'foo@foo.foo',
+        }
+
 
         # None from rule
         ea.rules[0].pop('notify_email')
         ea.send_notification_email('omg', rule=ea.rules[0])
-        assert set(mock_smtp.sendmail.call_args_list[3][0][1]) == set(['baz@baz.baz'])
+        assert set(mock_smtp.sendmail.call_args_list[3][0][1]) == {'baz@baz.baz'}
 
 
 def test_uncaught_exceptions(ea):

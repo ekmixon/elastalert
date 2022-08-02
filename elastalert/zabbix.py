@@ -24,19 +24,17 @@ class ZabbixClient(ZabbixAPI):
 
             self.aggregated_metrics.append(zm)
             if len(self.aggregated_metrics) > self.metrics_chunk_size:
-                self.logger.info("Sending: %s metrics" % (len(self.aggregated_metrics)))
+                self.logger.info(f"Sending: {len(self.aggregated_metrics)} metrics")
                 try:
                     ZabbixSender(zabbix_server=self.sender_host, zabbix_port=self.sender_port).send(self.aggregated_metrics)
                     self.aggregated_metrics = []
                 except Exception as e:
                     self.logger.exception(e)
-                    pass
         else:
             try:
                 ZabbixSender(zabbix_server=self.sender_host, zabbix_port=self.sender_port).send(zm)
             except Exception as e:
                 self.logger.exception(e)
-                pass
 
 
 class ZabbixAlerter(Alerter):

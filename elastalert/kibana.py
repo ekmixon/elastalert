@@ -226,16 +226,16 @@ def add_filter(dashboard, es_filter):
             # Wrap in quotes
             f_query = ['"%s"' % (item) for item in f_query]
             # Convert into joined query
-            f_query = '(%s)' % (' AND '.join(f_query))
+            f_query = f"({' AND '.join(f_query)})"
         kibana_filter['field'] = f_field
         kibana_filter['query'] = f_query
     elif 'range' in es_filter:
         kibana_filter['type'] = 'range'
         f_field, f_range = list(es_filter['range'].items())[0]
         kibana_filter['field'] = f_field
-        kibana_filter.update(f_range)
+        kibana_filter |= f_range
     else:
-        raise EAException("Could not parse filter %s for Kibana" % (es_filter))
+        raise EAException(f"Could not parse filter {es_filter} for Kibana")
 
     dashboard['services']['filter']['ids'].append(next_id)
     dashboard['services']['filter']['list'][str(next_id)] = kibana_filter
@@ -258,13 +258,13 @@ def filters_from_dashboard(db):
         if filter_type == 'time':
             continue
 
-        if filter_type == 'querystring':
-            config_filter = {'query': {'query_string': {'query': filter['query']}}}
-
         if filter_type == 'field':
             config_filter = {'term': {filter['field']: filter['query']}}
 
-        if filter_type == 'range':
+        elif filter_type == 'querystring':
+            config_filter = {'query': {'query_string': {'query': filter['query']}}}
+
+        elif filter_type == 'range':
             config_filter = {'range': {filter['field']: {'from': filter['from'], 'to': filter['to']}}}
 
         if filter['mandate'] == 'mustNot':
@@ -285,4 +285,4 @@ def kibana4_dashboard_link(dashboard, starttime, endtime):
     dashboard = os.path.expandvars(dashboard)
     time_settings = kibana4_time_temp % (starttime, endtime)
     time_settings = urllib.parse.quote(time_settings)
-    return "%s?_g=%s" % (dashboard, time_settings)
+    return f"{dashboard}?_g={time_settings}"

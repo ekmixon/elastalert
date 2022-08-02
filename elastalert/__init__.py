@@ -93,13 +93,13 @@ class ElasticSearchClient(Elasticsearch):
         if not self.is_atleastsix():
             return writeback_index
         elif doc_type == 'silence':
-            return writeback_index + '_silence'
+            return f'{writeback_index}_silence'
         elif doc_type == 'past_elastalert':
-            return writeback_index + '_past'
+            return f'{writeback_index}_past'
         elif doc_type == 'elastalert_status':
-            return writeback_index + '_status'
+            return f'{writeback_index}_status'
         elif doc_type == 'elastalert_error':
-            return writeback_index + '_error'
+            return f'{writeback_index}_error'
         return writeback_index
 
     @query_params(
@@ -252,6 +252,4 @@ class ElasticSearchClient(Elasticsearch):
         res = self.transport.perform_request(
             "GET", _make_path(index, doc_type, "_search"), params=params, body=body
         )
-        if type(res) == list or type(res) == tuple:
-            return res[1]
-        return res
+        return res[1] if type(res) in [list, tuple] else res
